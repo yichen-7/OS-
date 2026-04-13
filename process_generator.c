@@ -9,7 +9,7 @@ int main(int argc, char * argv[])
     signal(SIGINT, clearResources);
     // TODO Initialization
     // 1. Read the input files.
-    FILE *file = fopen("processes.txt", "r");
+    FILE *file = fopen("process.txt", "r");
   char line[100];
   struct process processes[100]; 
     int processCount = 0;
@@ -55,13 +55,15 @@ int main(int argc, char * argv[])
     if (clockProcess == 0) {
         execl("./clk.out", "./clk.out", NULL);
     }
+
+     sleep(2);
     int schedulerpid = fork();
     if (schedulerpid == 0) {
         execl("./scheduler.out", "./scheduler.out", algo_str, quantum_str, NULL);
     }
 
 
-    ;
+   
     // 4. Use this function after creating the clock process to initialize clock
     initClk();
     // To get time use this

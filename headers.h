@@ -19,6 +19,29 @@ typedef short bool;
 #define MSGKEY 77
 
 
+// Enum to define all possible states of a process in the system
+enum ProcessState {
+    STATE_ARRIVED,
+    STATE_STARTED,
+    STATE_STOPPED,
+    STATE_RESUMED,
+    STATE_FINISHED
+};
+
+// Process Control Block (PCB) structure to hold all process information
+struct PCB {
+    int id;                  // Process ID from the input file
+    int system_pid;          // Actual PID returned by fork() when the process starts
+    int arrival_time;        // The time the process arrived at the scheduler
+    int runtime;             // Total execution time required by the process
+    int remaining_time;      // Time left for the process to finish execution
+    int waiting_time;        // Total time the process spent waiting in the ready queue
+    int priority;            // Priority of the process (0 is the highest priority)
+    int start_time;          // The time the process started execution
+    enum ProcessState state; // Current state of the process
+};
+
+
 struct process
     {
        
@@ -87,3 +110,62 @@ void destroyClk(bool terminateAll)
     
     
 }
+
+//!============================== Priority Queue Implementation ==============================!//
+typedef struct Node
+{
+    struct PCB process;
+    struct Node* next;
+} Node;
+
+Node *head = NULL;
+bool isqueueEmpty()
+{
+    return head == NULL;
+}
+
+bool enqueue(struct PCB process)
+{
+    Node* newNode = (Node*)malloc(sizeof(Node));
+    newNode->process = process;
+    newNode->next = NULL;
+
+    if (isqueueEmpty() || head->process.priority > process.priority)
+    {
+        newNode->next = head;
+        head = newNode;
+        return true;
+    }
+
+    Node* current = head;
+    while (current->next != NULL && current->next->process.priority <= process.priority)
+    {
+        current = current->next;
+    }
+    newNode->next = current->next;
+    current->next = newNode;
+    return true;
+}
+bool dequeue(struct PCB* process)
+{
+    if (isqueueEmpty())
+    {
+        return false;
+    }
+    Node* temp = head;
+    *process = head->process;
+    head = head->next;
+    free(temp);
+    return true;
+}
+struct PCB peek()
+{
+    if (isqueueEmpty())
+    {
+        struct PCB emptyPCB;
+        emptyPCB.id = -1; // Indicate an empty PCB
+        return emptyPCB;
+    }
+    return head->process;
+}
+//!============================== End of Priority Queue Implementation ==============================!//

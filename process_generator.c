@@ -8,8 +8,17 @@ int main(int argc, char * argv[])
 {
     signal(SIGINT, clearResources);
     // TODO Initialization
+      char* fileName;
+  if (argc > 1) {
+          fileName = argv[1]; // Use the argument if provided
+      } else {
+          fileName = "process.txt"; // Default filename
+          printf("No file provided, using default: process.txt\n");
+      } 
+
+
     // 1. Read the input files.
-    FILE *file = fopen("process.txt", "r");
+    FILE *file = fopen("filename", "r");
   char line[100];
   struct process processes[100]; 
     int processCount = 0;

@@ -31,6 +31,7 @@ struct message schedulerMsg;
 
 int main(int argc, char * argv[])
 {
+    int cpu_ready_time = 0; //For adding the 1 second overhead of context switching
 
     int Algorithm = 1;
     int quantum = 0;
@@ -68,7 +69,6 @@ int main(int argc, char * argv[])
             newpcb.state = STATE_ARRIVED;
             printf("Scheduler received process with \nID: %d\t arrival time: %d\n runtime: %d\t priority: %d\n", schedulerMsg.p.id, schedulerMsg.p.arrival, schedulerMsg.p.runtime, schedulerMsg.p.priority);
             
-            // PUT IN APPROPRIATE QUEUE BEFORE CLOSING THE BRACKET
             if (Algorithm==1)
             {
                 enqueue(newpcb);
@@ -98,7 +98,11 @@ int main(int argc, char * argv[])
         
         
         
-            
+            if (Algorithm == 1){
+
+
+
+                
             if (process_finished) {
                 printf("Process finished at time %d\n", getClk());
                 // int TAT = getClk() - current_process->arrival_time;
@@ -153,6 +157,7 @@ int main(int argc, char * argv[])
             
                 }
 
+            }
 
             if (Algorithm == 2) //RR
             {
@@ -160,19 +165,32 @@ int main(int argc, char * argv[])
                 if (current_process!=NULL){
                 time_spent = getClk() - current_process->start_time;
                 }
-                
-                if ((time_spent >= quantum ) && !process_finished && current_process != NULL) {
+
+               
+                if (  current_process != NULL && process_finished) { 
+
+                    current_process->remaining_time = 0;
+                    printf("Time %d: Process %d executed for %d units. Remaining: %d\n", getClk(), current_process->id, quantum, current_process->remaining_time);
+                    process_finished = false; // reset the flag for the next process
+                    print_process_stats(current_process);
+                    free(current_process);        
+                    current_process = NULL;
+
+
+                }
+               
+               
+               else if ((time_spent >= quantum ) && !process_finished && current_process != NULL) {
 
                     current_process->remaining_time -= quantum;
                     
                     kill(current_process->system_pid, SIGSTOP);
-                    print_process_stats(current_process);
+                    //print_process_stats(current_process);
                     enqueue_rr(*current_process);
+                    printf("Time %d: Process %d paused. Remaining: %d\n", getClk(), current_process->id, current_process->remaining_time);
                     free(current_process);
                     current_process = NULL;
                     
-
-
                     //  if (current_process->remaining_time <= 0) { 
                     //    current_process->remaining_time = 0; // Ensure remaining time doesn't go negative
 
@@ -184,23 +202,42 @@ int main(int argc, char * argv[])
                     // printf("Turnaround Time (TAT) for process %d: %d\n", current_process->id, TAT);
                     // printf("Weighted Turnaround Time (WTAT) for process %d: %.2f\n", current_process->id, WTAT);        
 
-                    print_process_stats(current_process);
-
-                    process_finished = false; // reset the flag for the next process
-                    free(current_process); // free the memory allocated for the current process
-                    current_process = NULL; // set the pointer to NULL after freeing
-
                 }
 
-                else if (  current_process != NULL && process_finished) { 
+               
 
-                    current_process->remaining_time = 0;
-                    printf("Time %d: Process %d executed for %d units. Remaining: %d\n", getClk(), current_process->id, quantum, current_process->remaining_time);
-                    free(current_process);        
-
-
-
+                if (current_process == NULL && !isqueueEmpty()) {
+                    struct PCB new_process;
+                    dequeue(&new_process); 
+                    
+                    current_process = (struct PCB*)malloc(sizeof(struct PCB));
+                    *current_process = new_process;
+                    
+                    if(current_process->state == STATE_ARRIVED)
+                    {
+                        int pid = fork();
+                        if (pid == 0) {
+                            char remaining_time_str[20], id_str[20];
+                            sprintf(id_str, "%d", current_process->id);
+                            sprintf(remaining_time_str, "%d", current_process->remaining_time);
+                            execl("./process.out", "./process.out", remaining_time_str, id_str, NULL);
+                        } else {
+                            current_process->system_pid = pid;
+                            current_process->state = STATE_STARTED;
+                            current_process->start_time = getClk();
+                            printf("Process %d started at time %d\n", current_process->id, getClk());
+                        }
+                    }
+                    else if(current_process->state == STATE_STOPPED)
+                    {
+                        kill(current_process->system_pid, SIGCONT);
+                        current_process->state = STATE_RESUMED;
+                        current_process->start_time = getClk();
+                        printf("Time %d: Process %d resumed. Remaining: %d\n", getClk(), current_process->id, current_process->remaining_time);
+                    }
                 }
+
+
             }
 
    }   

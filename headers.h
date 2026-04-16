@@ -169,3 +169,26 @@ struct PCB peek()
     return head->process;
 }
 //!============================== End of Priority Queue Implementation ==============================!//
+
+bool enqueue_rr(struct PCB process)
+{
+    Node* newNode = (Node*)malloc(sizeof(Node));
+    newNode->process = process;
+    newNode->next = NULL;
+
+    if (isqueueEmpty())
+    {
+        newNode->next = head;
+        head = newNode;
+        return true;
+    }
+
+    Node* current = head;
+    while (current->next != NULL)
+    {
+        current = current->next;
+    }
+    newNode->next = current->next;
+    current->next = newNode;
+    return true;
+}

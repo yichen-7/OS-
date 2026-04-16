@@ -7,11 +7,42 @@ void handle_sigusr2(int sig)
     }
 }
 
+void print_process(struct PCB process) {
+    printf("Process ID: %d\n", process.id);
+    printf("Arrival Time: %d\n", process.arrival_time);
+    printf("Runtime: %d\n", process.runtime);
+    printf("Remaining Time: %d\n", process.remaining_time);
+    printf("Priority: %d\n", process.priority);
+    printf("State: %d\n", process.state);
+}
+
+void print_process_stats(struct PCB* p) {
+    printf("Process finished at time %d\n", getClk());
+    int TAT = getClk() - p->arrival_time;
+    int WT = TAT - p->runtime;
+
+    printf("Waiting Time (WT) for process %d: %d\n", p->id, WT);
+    printf("Turnaround Time (TAT) for process %d: %d\n", p->id, TAT);
+}
+
+
 struct message schedulerMsg;
 
 
 int main(int argc, char * argv[])
 {
+
+    int Algorithm = 1;
+    int quantum = 0;
+    
+    //Read the user's choice from the process generator
+    if (argc > 1) {
+        Algorithm = atoi(argv[1]);
+    }
+    if (argc > 2) { 
+        quantum = atoi(argv[2]); //Assuming 2nd argument is the quantum for RR
+    }
+
     initClk();
     printf("Scheduler started at time %d\n", getClk());
     signal(SIGUSR2, handle_sigusr2);
@@ -26,7 +57,8 @@ int main(int argc, char * argv[])
    while(1)
    {
 
-   int rec_val = msgrcv(msgid, &schedulerMsg, sizeof(struct message)-sizeof(long), 0, IPC_NOWAIT);
+
+ int rec_val = msgrcv(msgid, &schedulerMsg, sizeof(struct message)-sizeof(long), 0, IPC_NOWAIT);
    if (rec_val != -1)
    {
     struct PCB newpcb;
@@ -36,10 +68,17 @@ int main(int argc, char * argv[])
     newpcb.remaining_time = schedulerMsg.p.runtime;
     newpcb.priority = schedulerMsg.p.priority;
     newpcb.state = STATE_ARRIVED;
-    enqueue(newpcb);
     printf("Scheduler received process with \nID: %d\t arrival time: %d\n runtime: %d\t priority: %d\n", schedulerMsg.p.id, schedulerMsg.p.arrival, schedulerMsg.p.runtime, schedulerMsg.p.priority);
     
-    if(current_process != NULL)
+    
+
+   }
+
+    if (Algorithm==1)
+{
+    enqueue(newpcb);
+
+        if(current_process != NULL)
     {
         if(newpcb.priority < current_process->priority && current_process->remaining_time > 0)
         {
@@ -55,18 +94,21 @@ int main(int argc, char * argv[])
             
         }
     }
-   }
+  
    
    
     
     if (process_finished) {
         printf("Process finished at time %d\n", getClk());
-        int TAT = getClk() - current_process->arrival_time;
-        int WT = TAT - current_process->runtime;
-        float WTAT = (float)TAT / current_process->runtime;
-        printf("Waiting Time (WT) for process %d: %d\n", current_process->id, WT);
-        printf("Turnaround Time (TAT) for process %d: %d\n", current_process->id, TAT);
-        printf("Weighted Turnaround Time (WTAT) for process %d: %.2f\n", current_process->id, WTAT);
+        // int TAT = getClk() - current_process->arrival_time;
+        // int WT = TAT - current_process->runtime;
+        // float WTAT = (float)TAT / current_process->runtime;
+        // printf("Waiting Time (WT) for process %d: %d\n", current_process->id, WT);
+        // printf("Turnaround Time (TAT) for process %d: %d\n", current_process->id, TAT);
+        // printf("Weighted Turnaround Time (WTAT) for process %d: %.2f\n", current_process->id, WTAT);
+
+        print_process_stats(current_process);
+
         process_finished = false; // reset the flag for the next process
         free(current_process); // free the memory allocated for the current process
         current_process = NULL; // set the pointer to NULL after freeing
@@ -105,10 +147,60 @@ int main(int argc, char * argv[])
             printf("Time %d: Process %d resumed. Remaining: %d\n", getClk(), current_process->id, current_process->remaining_time);
         }
         
-
     
     }
-    
+
+}
+
+
+if (Algorithm == 2) //RR
+{
+  
+    enqueue_rr(newpcb);
+
+    if(!isqueueEmpty())
+    dequeue(&current_process);
+    if (current_process->runtime>=quantum && !process_finished && !isqueueEmpty()){
+
+        current_process->remaining_time -= quantum;
+         if (current_process->remaining_time <= 0) { 
+            current_process->remaining_time = 0; // Ensure remaining time doesn't go negative
+        // printf("Process finished at time %d\n", getClk());
+        // int TAT = getClk() - current_process->arrival_time;
+        // int WT = TAT - current_process->runtime;
+        // float WTAT = (float)TAT / current_process->runtime;
+        // printf("Waiting Time (WT) for process %d: %d\n", current_process->id, WT);
+        // printf("Turnaround Time (TAT) for process %d: %d\n", current_process->id, TAT);
+        // printf("Weighted Turnaround Time (WTAT) for process %d: %.2f\n", current_process->id, WTAT);
+
+        print_process_stats(current_process);
+
+        process_finished = false; // reset the flag for the next process
+        free(current_process); // free the memory allocated for the current process
+        current_process = NULL; // set the pointer to NULL after freeing
+    }
+    else{
+
+        current_process->remaining_time = current_process->remaining_time - quantum;
+        enqueue(*current_process);
+        printf("Time %d: Process %d executed for %d units. Remaining: %d\n", getClk(), current_process->id, quantum, current_process->remaining_time);
+        free(current_process);        
+
+
+
+    }
+
+
+
+
+    }
+
+
+
+
+
+
+}
 
 }
     

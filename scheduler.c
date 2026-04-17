@@ -7,24 +7,6 @@ void handle_sigusr2(int sig)
     }
 }
 
-void print_process(struct PCB process) {
-    printf("Process ID: %d\n", process.id);
-    printf("Arrival Time: %d\n", process.arrival_time);
-    printf("Runtime: %d\n", process.runtime);
-    printf("Remaining Time: %d\n", process.remaining_time);
-    printf("Priority: %d\n", process.priority);
-    printf("State: %d\n", process.state);
-}
-
-void print_process_stats(struct PCB* p) {
-    printf("Process finished at time %d\n", getClk());
-    int TAT = getClk() - p->arrival_time;
-    int WT = TAT - p->runtime;
-
-    printf("Waiting Time (WT) for process %d: %d\n", p->id, WT);
-    printf("Turnaround Time (TAT) for process %d: %d\n", p->id, TAT);
-}
-
 
 struct message schedulerMsg;
 
@@ -123,10 +105,11 @@ int main(int argc, char * argv[])
                 process_finished = false; // reset the flag for the next process
                 free(current_process); // free the memory allocated for the current process
                 current_process = NULL; // set the pointer to NULL after freeing
-                cpu_ready_time = getClk() + 1;
+                cpu_ready_time = getClk() + 1; // Add context switch overhead
             }
 
-            if (current_process == NULL && !isqueueEmpty()) {
+                // Added (getClk() >= cpu_ready_time) to respect the context switching overhead
+                if (current_process == NULL && !isqueueEmpty() && getClk() >= cpu_ready_time) {
                 struct PCB new_process;
                 dequeue(&new_process);
                 current_process = (struct PCB*)malloc(sizeof(struct PCB));
@@ -273,20 +256,23 @@ int main(int argc, char * argv[])
               
 
 
-                if (current_process == NULL && isqueueEmpty()) {
+                
+
+
+            }
+            if (current_process == NULL && isqueueEmpty()) {
                  if (turnoff_timer == -1) {
                     turnoff_timer = getClk(); // start the turnoff timer
-                        } else if (getClk() - turnoff_timer >= 5) { // 5 seconds of doing nothing
-                        printf("5 seconds passed with no work. Terminating.\n");
+                        } else if (getClk() - turnoff_timer >= 10) { // 10 seconds of doing nothing
+                        printf("Standard Deviation of WTA: %.2f\n", get_std_wta());
+                        printf("10 seconds passed with no work. Terminating.\n");
+
                         destroyClk(true);
                         exit(0);
                     }
                     } 
                     else {
                     turnoff_timer = -1; // reset timer if there's work to do
-            }
-
-
             }
 
    }   

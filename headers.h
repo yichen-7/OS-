@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <signal.h>
+#include <math.h>
 
 typedef short bool;
 #define true 1
@@ -40,6 +41,9 @@ struct PCB {
     int start_time;          // The time the process started execution
     enum ProcessState state; // Current state of the process
 };
+
+
+
 
 
 struct process
@@ -191,4 +195,53 @@ bool enqueue_rr(struct PCB process)
     newNode->next = current->next;
     current->next = newNode;
     return true;
+}
+
+
+
+float total_wta = 0;
+float total_wta_sq = 0;
+int total_processes_count = 0;
+
+
+void print_process_stats(struct PCB* p) {
+    printf("Process finished at time %d\n", getClk());
+    int TAT = getClk() - p->arrival_time;
+    int WT = TAT - p->runtime;
+    // Calculate WTA for current process
+    float current_wta = (float)TAT / p->runtime; 
+
+    // Update totals
+    total_wta += current_wta;
+    total_wta_sq += (current_wta * current_wta);
+    total_processes_count++;
+
+    
+    printf("Waiting Time (WT) for process %d: %d\n", p->id, WT);
+    printf("Turnaround Time (TAT) for process %d: %d\n", p->id, TAT);
+}
+
+
+
+void print_process(struct PCB process) {
+    printf("Process ID: %d\n", process.id);
+    printf("Arrival Time: %d\n", process.arrival_time);
+    printf("Runtime: %d\n", process.runtime);
+    printf("Remaining Time: %d\n", process.remaining_time);
+    printf("Priority: %d\n", process.priority);
+    printf("State: %d\n", process.state);
+}
+
+
+float get_std_wta() {
+    if (total_processes_count == 0) return 0.0;
+    
+    double avg_wta = total_wta / total_processes_count;
+    // قانون التباين: (مجموع المربعات / العدد) - (مربع المتوسط)
+    double variance = (total_wta_sq / total_processes_count) - (avg_wta * avg_wta);
+    
+    // منعاً لأي أخطاء حسابية لو التباين طلع برقم سالب ضئيل جداً نتيجة التقريب
+    if (variance < 0) variance = 0;
+    
+    return sqrt(variance);
 }

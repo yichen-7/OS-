@@ -20,12 +20,12 @@ int main(int argc, char * argv[])
     // 1. Read the input files.
     FILE *file = fopen(fileName, "r");
 
-// if (file == NULL) {
-//         perror("FATAL ERROR"); // This prints the exact Linux system error
-//         printf("Could not find the file named: '%s'\n", fileName);
-//         printf("Check your folder to ensure it isn't named process.txt.txt\n");
-//         exit(1); // Safely kill the program instead of segfaulting
-//     }
+if (file == NULL) {
+        perror("FATAL ERROR"); // This prints the exact Linux system error
+        printf("Could not find the file named: '%s'\n", fileName);
+        printf("Check your folder to ensure it isn't named process.txt.txt\n");
+        exit(1); // Safely kill the program instead of segfaulting
+    }
 
   char line[100];
   struct process processes[100]; 

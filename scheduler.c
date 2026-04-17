@@ -33,18 +33,13 @@ int main(int argc, char * argv[])
 {
     int cpu_ready_time = 0; //For adding the 1 second overhead of context switching
 
-    int turnoff_timer = -1;
+    int turnoff_timer = -1; // To track when to destroy the clock and exit the scheduler (RR)
 
 
     int Algorithm = 1;
     int quantum = 0;
 
-    int total_processes = 0;
-    int finished_processes = 0; // To track when to destroy the clock and exit the scheduler (RR)
-
-    if (argc > 3) {
-    total_processes = atoi(argv[3]);
-    }
+ 
     
     //Read the user's choice from the process generator
     if (argc > 1) {
@@ -188,7 +183,6 @@ int main(int argc, char * argv[])
                     free(current_process);        
                     current_process = NULL;
                     cpu_ready_time = getClk() + 1; // Add context switch overhead
-                    finished_processes++;
 
                 }
                
@@ -213,7 +207,6 @@ int main(int argc, char * argv[])
                     free(current_process);
                     current_process = NULL;
                     cpu_ready_time = getClk() + 1;
-                    finished_processes++;
 
                     }
 
@@ -277,11 +270,7 @@ int main(int argc, char * argv[])
                     }
                 }
 
-                if (total_processes > 0 && finished_processes == total_processes) {
-                printf("All processes finished. Terminating scheduler.\n");
-                destroyClk(true);
-                exit(0);
-}
+              
 
 
                 if (current_process == NULL && isqueueEmpty()) {

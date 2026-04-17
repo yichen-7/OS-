@@ -33,8 +33,18 @@ int main(int argc, char * argv[])
 {
     int cpu_ready_time = 0; //For adding the 1 second overhead of context switching
 
+    int turnoff_timer = -1;
+
+
     int Algorithm = 1;
     int quantum = 0;
+
+    int total_processes = 0;
+    int finished_processes = 0; // To track when to destroy the clock and exit the scheduler (RR)
+
+    if (argc > 3) {
+    total_processes = atoi(argv[3]);
+    }
     
     //Read the user's choice from the process generator
     if (argc > 1) {
@@ -86,6 +96,7 @@ int main(int argc, char * argv[])
                         printf("Process %d PREEMPTED by process %d\n", current_process->id, newpcb.id);
                         free(current_process);
                         current_process = NULL;
+                        cpu_ready_time = getClk() + 1; 
                         
                     }
                 }
@@ -117,6 +128,7 @@ int main(int argc, char * argv[])
                 process_finished = false; // reset the flag for the next process
                 free(current_process); // free the memory allocated for the current process
                 current_process = NULL; // set the pointer to NULL after freeing
+                cpu_ready_time = getClk() + 1;
             }
 
             if (current_process == NULL && !isqueueEmpty()) {
@@ -175,21 +187,49 @@ int main(int argc, char * argv[])
                     print_process_stats(current_process);
                     free(current_process);        
                     current_process = NULL;
-
+                    cpu_ready_time = getClk() + 1; // Add context switch overhead
+                    finished_processes++;
 
                 }
                
                
                else if ((time_spent >= quantum ) && !process_finished && current_process != NULL) {
 
-                    current_process->remaining_time -= quantum;
                     
+                    if (current_process->remaining_time > quantum) {
+                    current_process->remaining_time -= quantum;
+                    } 
+
+                    else {
+                    current_process->remaining_time = 0;
+                    
+                    }
+                    
+                    if (current_process->remaining_time <= 0) {
+
+                    kill(current_process->system_pid, SIGKILL);
+                    printf("Time %d: Process %d finished via quantum expiry.\n", getClk(), current_process->id);
+                    print_process_stats(current_process);
+                    free(current_process);
+                    current_process = NULL;
+                    cpu_ready_time = getClk() + 1;
+                    finished_processes++;
+
+                    }
+
+                    else{
                     kill(current_process->system_pid, SIGSTOP);
                     //print_process_stats(current_process);
                     enqueue_rr(*current_process);
-                    printf("Time %d: Process %d paused. Remaining: %d\n", getClk(), current_process->id, current_process->remaining_time);
-                    free(current_process);
+                     free(current_process);
                     current_process = NULL;
+                    cpu_ready_time = getClk() + 1;
+                    }
+
+                    // printf("Time %d: Process %d paused. Remaining: %d\n", getClk(), current_process->id, current_process->remaining_time);
+                    // free(current_process);
+                    // current_process = NULL;
+                    // cpu_ready_time = getClk() + 1;
                     
                     //  if (current_process->remaining_time <= 0) { 
                     //    current_process->remaining_time = 0; // Ensure remaining time doesn't go negative
@@ -206,7 +246,7 @@ int main(int argc, char * argv[])
 
                
 
-                if (current_process == NULL && !isqueueEmpty()) {
+                if (current_process == NULL && !isqueueEmpty() && getClk() >= cpu_ready_time) { // The cooldown period must pass for the code to continue (this is the 1 second penalty for context switching)
                     struct PCB new_process;
                     dequeue(&new_process); 
                     
@@ -236,6 +276,26 @@ int main(int argc, char * argv[])
                         printf("Time %d: Process %d resumed. Remaining: %d\n", getClk(), current_process->id, current_process->remaining_time);
                     }
                 }
+
+                if (total_processes > 0 && finished_processes == total_processes) {
+                printf("All processes finished. Terminating scheduler.\n");
+                destroyClk(true);
+                exit(0);
+}
+
+
+                if (current_process == NULL && isqueueEmpty()) {
+                 if (turnoff_timer == -1) {
+                    turnoff_timer = getClk(); // start the turnoff timer
+                        } else if (getClk() - turnoff_timer >= 5) { // 5 seconds of doing nothing
+                        printf("5 seconds passed with no work. Terminating.\n");
+                        destroyClk(true);
+                        exit(0);
+                    }
+                    } 
+                    else {
+                    turnoff_timer = -1; // reset timer if there's work to do
+            }
 
 
             }

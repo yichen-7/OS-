@@ -200,6 +200,8 @@ struct message schedulerMsg;
 
 int main(int argc, char * argv[])
 {
+    initClk();
+
     int cpu_ready_time = 0; //For adding the 1 second overhead of context switching
 
     int turnoff_timer = -1; // To track when to destroy the clock and exit the scheduler (RR)
@@ -228,7 +230,7 @@ int main(int argc, char * argv[])
         }
 
 
-    initClk();
+    
     printf("Scheduler started at time %d\n", getClk());
     signal(SIGUSR2, handle_sigusr2);
     struct PCB* current_process = NULL;
@@ -290,14 +292,18 @@ int main(int argc, char * argv[])
                         //preempt the current process
                         kill(current_process->system_pid, SIGSTOP);
                         int time_spent = getClk() - current_process->start_time;
+                        if (time_spent > 0)
+                        {
                         current_process->remaining_time -= time_spent; 
                         current_process->time_executed += time_spent; 
+                        }
                         current_process->state = STATE_STOPPED;
+                        log_process_state("stopped", current_process);
                         enqueue(*current_process);
                         // printf("Process %d PREEMPTED by process %d\n", current_process->id, newpcb.id);
                         // Terminal log for preemption
                         printf("[Clock: %d] !! Preemption: Process %d paused for higher priority Process %d\n", getClk(), current_process->id, newpcb.id);
-                        log_process_state("stopped", current_process);
+                        
                         free(current_process);
                         current_process = NULL;
                         cpu_ready_time = getClk() + 1; 
@@ -337,7 +343,7 @@ int main(int argc, char * argv[])
             // }
                 if (process_finished && current_process != NULL) 
                 { // <--- ALWAYS check for NULL
-                    log_process_state("finished", current_process);
+                    //log_process_state("finished", current_process);
                     printf("[Clock: %d] OK Process %d finished execution\n", getClk(), current_process->id);
                     print_process_stats(current_process, finish_recorded_time);
                     

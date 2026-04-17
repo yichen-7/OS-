@@ -41,7 +41,7 @@ int main(int argc, char * argv[])
             remainingtime--;
             lasttime = current_time;
             //printf("[Process %d] remaining time: %d\n", getpid(), remainingtime);
-            printf("[Process %d] remaining time: %d at time %d\n", atoi(argv[2]), remainingtime, current_time);
+            //printf("[Process %d] remaining time: %d at time %d\n", atoi(argv[2]), remainingtime, current_time);
         }
         
         // remainingtime = ??;

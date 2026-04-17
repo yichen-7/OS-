@@ -39,6 +39,8 @@ struct PCB {
     int waiting_time;        // Total time the process spent waiting in the ready queue
     int priority;            // Priority of the process (0 is the highest priority)
     int start_time;          // The time the process started execution
+    int finish_time;      // recorded when process signals completion
+    int time_executed;    // total CPU time actually consumed
     enum ProcessState state; // Current state of the process
 };
 

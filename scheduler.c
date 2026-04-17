@@ -1,9 +1,13 @@
 #include "headers.h"
 bool process_finished = false;
-void handle_sigusr2(int sig)
-{
+// \ global to capture finish time precisely
+int finished_process_pid = -1;
+int finish_recorded_time = -1;
+
+void handle_sigusr2(int sig) {
     if (sig == SIGUSR2) {
         process_finished = true;
+        finish_recorded_time = getClk(); // capture NOW, not later
     }
 }
 
@@ -91,38 +95,40 @@ bool enqueue_rr(struct PCB process)
 }
 
 
+// File pointers for output
+FILE *log_file;
+FILE *perf_file;
 
+//for calculating average waiting time and turnaround time
+int total_waiting_time = 0;
+int total_execution_time = 0;
+int last_finish_time = 0;
 float total_wta = 0;
 float total_wta_sq = 0;
 int total_processes_count = 0;
 
-
-void print_process_stats(struct PCB* p) {
-    printf("Process finished at time %d\n", getClk());
-    int TAT = getClk() - p->arrival_time;
-    int WT = TAT - p->runtime;
-    // Calculate WTA for current process
-    float current_wta = (float)TAT / p->runtime; 
-
-    // Update totals
-    total_wta += current_wta;
-    total_wta_sq += (current_wta * current_wta);
-    total_processes_count++;
-
-    
-    printf("Waiting Time (WT) for process %d: %d\n", p->id, WT);
-    printf("Turnaround Time (TAT) for process %d: %d\n", p->id, TAT);
+// Function to calculate the current waiting time of a process
+int get_current_wait(struct PCB* p) {
+    return (getClk() - p->arrival_time) - p->time_executed;
 }
 
 
+void print_process_stats(struct PCB* p, int finish_time) {
+    int TAT = getClk() - p->arrival_time;
+    int WT = TAT - p->runtime;
+    float current_wta = (float)TAT / p->runtime; 
 
-void print_process(struct PCB process) {
-    printf("Process ID: %d\n", process.id);
-    printf("Arrival Time: %d\n", process.arrival_time);
-    printf("Runtime: %d\n", process.runtime);
-    printf("Remaining Time: %d\n", process.remaining_time);
-    printf("Priority: %d\n", process.priority);
-    printf("State: %d\n", process.state);
+    // Update totals for average waiting time and standard deviation calculations
+    total_wta += current_wta;
+    total_wta_sq += (current_wta * current_wta);
+    total_processes_count++;
+    total_waiting_time += WT;
+    total_execution_time += p->runtime;
+    last_finish_time = finish_time;
+
+    // Log the 'finished' state
+    fprintf(log_file, "At time %d process %d finished arr %d total %d remain 0 wait %d TA %d WTA %.2f\n", 
+            getClk(), p->id, p->arrival_time, p->runtime, WT, TAT, current_wta);
 }
 
 
@@ -138,6 +144,51 @@ float get_std_wta() {
     return sqrt(variance);
 }
 
+// Finalizes scheduler by reporting metrics and cleaning resources
+void finalize_report() {
+    if (total_processes_count > 0 && last_finish_time > 0) {
+        float avg_wta = total_wta / total_processes_count;
+        float avg_waiting = (float)total_waiting_time / total_processes_count;
+        float utilization = ((float)total_execution_time / last_finish_time) * 100.0;
+
+        
+        fprintf(perf_file, "CPU utilization = %.2f%%\n", utilization);
+        fprintf(perf_file, "Avg WTA = %.2f\n", avg_wta);
+        fprintf(perf_file, "Avg Waiting = %.2f\n", avg_waiting);
+        fprintf(perf_file, "Std WTA = %.2f\n", get_std_wta());
+    }
+    
+    // Close files and cleanup resources [cite: 742, 799]
+    fclose(log_file);
+    fclose(perf_file);
+    printf("10 seconds idle. Termination complete.\n");
+    destroyClk(true);
+    exit(0);
+}
+
+
+
+void print_process(struct PCB process) {
+    printf("Process ID: %d\n", process.id);
+    printf("Arrival Time: %d\n", process.arrival_time);
+    printf("Runtime: %d\n", process.runtime);
+    printf("Remaining Time: %d\n", process.remaining_time);
+    printf("Priority: %d\n", process.priority);
+    printf("State: %d\n", process.state);
+}
+
+
+
+
+// Helper function to write in log file standard states (Started, Resumed, Stopped)
+    void log_process_state(const char* state, struct PCB* p) 
+    {
+    if (log_file == NULL || p == NULL) return;
+    fprintf(log_file, "At time %d process %d %s arr %d total %d remain %d wait %d\n", 
+            getClk(), p->id, state, p->arrival_time, 
+            p->runtime, p->remaining_time, get_current_wait(p));
+    fflush(log_file); // <--- IMPORTANT: This forces writing to the file immediately
+    }
 
 
 
@@ -167,6 +218,16 @@ int main(int argc, char * argv[])
         quantum = atoi(argv[2]); //Assuming 2nd argument is the quantum for RR
     }
 
+    // Open output files in write mode -- this will create the files if they don't exist and overwrite them if they do - 'w' mode is for writing
+        log_file = fopen("scheduler.log", "w");
+        perf_file = fopen("scheduler.perf", "w");
+        
+        // Write header for the log file
+        if (log_file != NULL) {
+            fprintf(log_file, "#At time x process y state arr w total z remain y wait k\n");
+        }
+
+
     initClk();
     printf("Scheduler started at time %d\n", getClk());
     signal(SIGUSR2, handle_sigusr2);
@@ -179,7 +240,28 @@ int main(int argc, char * argv[])
 
 
    while(1)
-   {
+   {             static int last_printed_time = -1;
+                if (getClk() != last_printed_time) {
+                    // 1. Check if we are currently in the 1-second overhead period
+                    if (getClk() < cpu_ready_time) 
+                    {
+                        // Highlighting Context Switching in Yellow
+                        printf("\033[1;33m[Clock: %d] == Context Switching... (Overhead)\033[0m\n", getClk());
+                        } 
+                    // 2. Check if a process is actually running
+                    else if (current_process != NULL) {
+                        printf("[Clock: %d] ## CPU is busy with Process %d\n", getClk(), current_process->id);
+                    } 
+                    // 3. Otherwise, CPU is idle
+                    else {
+                        printf("[Clock: %d] .. CPU is idle\n", getClk());
+                    }
+                    fflush(stdout);
+                    last_printed_time = getClk();
+                    }
+
+
+
         int rec_val = msgrcv(msgid, &schedulerMsg, sizeof(struct message)-sizeof(long), 0, IPC_NOWAIT);
         if (rec_val != -1)
         {
@@ -190,8 +272,13 @@ int main(int argc, char * argv[])
             newpcb.remaining_time = schedulerMsg.p.runtime;
             newpcb.priority = schedulerMsg.p.priority;
             newpcb.state = STATE_ARRIVED;
-            printf("Scheduler received process with \nID: %d\t arrival time: %d\n runtime: %d\t priority: %d\n", schedulerMsg.p.id, schedulerMsg.p.arrival, schedulerMsg.p.runtime, schedulerMsg.p.priority);
-            
+            newpcb.time_executed = 0;
+
+            // Terminal log for arrival
+            printf("[Clock: %d] >> Process %d arrived (Priority: %d, Runtime: %d)\n",getClk(), newpcb.id, newpcb.priority, newpcb.runtime);  
+
+            // printf("Scheduler received process with \nID: %d\t arrival time: %d\n runtime: %d\t priority: %d\n", schedulerMsg.p.id, schedulerMsg.p.arrival, schedulerMsg.p.runtime, schedulerMsg.p.priority);
+            log_process_state("arrived", &newpcb);
             if (Algorithm==1)
             {
                 enqueue(newpcb);
@@ -203,10 +290,14 @@ int main(int argc, char * argv[])
                         //preempt the current process
                         kill(current_process->system_pid, SIGSTOP);
                         int time_spent = getClk() - current_process->start_time;
-                        current_process->remaining_time -= time_spent;  
+                        current_process->remaining_time -= time_spent; 
+                        current_process->time_executed += time_spent; 
                         current_process->state = STATE_STOPPED;
                         enqueue(*current_process);
-                        printf("Process %d PREEMPTED by process %d\n", current_process->id, newpcb.id);
+                        // printf("Process %d PREEMPTED by process %d\n", current_process->id, newpcb.id);
+                        // Terminal log for preemption
+                        printf("[Clock: %d] !! Preemption: Process %d paused for higher priority Process %d\n", getClk(), current_process->id, newpcb.id);
+                        log_process_state("stopped", current_process);
                         free(current_process);
                         current_process = NULL;
                         cpu_ready_time = getClk() + 1; 
@@ -227,22 +318,34 @@ int main(int argc, char * argv[])
 
 
                 
-            if (process_finished) {
-                printf("Process finished at time %d\n", getClk());
-                // int TAT = getClk() - current_process->arrival_time;
-                // int WT = TAT - current_process->runtime;
-                // float WTAT = (float)TAT / current_process->runtime;
-                // printf("Waiting Time (WT) for process %d: %d\n", current_process->id, WT);
-                // printf("Turnaround Time (TAT) for process %d: %d\n", current_process->id, TAT);
-                // printf("Weighted Turnaround Time (WTAT) for process %d: %.2f\n", current_process->id, WTAT);
+            // if (process_finished) {
+            //     // printf("Process finished at time %d\n", getClk());
+            //     log_process_state("finished", current_process);
+            //     // int TAT = getClk() - current_process->arrival_time;
+            //     // int WT = TAT - current_process->runtime;
+            //     // float WTAT = (float)TAT / current_process->runtime;
+            //     // printf("Waiting Time (WT) for process %d: %d\n", current_process->id, WT);
+            //     // printf("Turnaround Time (TAT) for process %d: %d\n", current_process->id, TAT);
+            //     // printf("Weighted Turnaround Time (WTAT) for process %d: %.2f\n", current_process->id, WTAT);
 
-                print_process_stats(current_process);
+            //     print_process_stats(current_process);
 
-                process_finished = false; // reset the flag for the next process
-                free(current_process); // free the memory allocated for the current process
-                current_process = NULL; // set the pointer to NULL after freeing
-                cpu_ready_time = getClk() + 1; // Add context switch overhead
-            }
+            //     process_finished = false; // reset the flag for the next process
+            //     free(current_process); // free the memory allocated for the current process
+            //     current_process = NULL; // set the pointer to NULL after freeing
+            //     cpu_ready_time = getClk() + 1; // Add context switch overhead
+            // }
+                if (process_finished && current_process != NULL) 
+                { // <--- ALWAYS check for NULL
+                    log_process_state("finished", current_process);
+                    printf("[Clock: %d] OK Process %d finished execution\n", getClk(), current_process->id);
+                    print_process_stats(current_process, finish_recorded_time);
+                    
+                    process_finished = false;
+                    free(current_process);
+                    current_process = NULL;
+                    cpu_ready_time = getClk() + 1;
+                }
 
                 // Added (getClk() >= cpu_ready_time) to respect the context switching overhead
                 if (current_process == NULL && !isqueueEmpty() && getClk() >= cpu_ready_time) {
@@ -269,7 +372,8 @@ int main(int argc, char * argv[])
                             current_process->system_pid = pid;
                             current_process->state = STATE_STARTED;
                             current_process->start_time = getClk();
-                            printf("Process %d started at time %d\n", current_process->id, getClk());
+                            // printf("Process %d started at time %d\n", current_process->id, getClk());
+                            log_process_state("started", current_process);
                         }
                     }
                     else if(current_process->state == STATE_STOPPED)
@@ -277,7 +381,9 @@ int main(int argc, char * argv[])
                         kill(current_process->system_pid, SIGCONT);
                         current_process->state = STATE_RESUMED;
                         current_process->start_time = getClk();
-                        printf("Time %d: Process %d resumed. Remaining: %d\n", getClk(), current_process->id, current_process->remaining_time);
+                        printf("[Clock: %d] -> CPU resumed Process %d (Remaining: %d)\n",getClk(), current_process->id, current_process->remaining_time);
+                        // printf("Time %d: Process %d resumed. Remaining: %d\n", getClk(), current_process->id, current_process->remaining_time);
+                        log_process_state("resumed", current_process);
                     }
                 
             
@@ -298,7 +404,7 @@ int main(int argc, char * argv[])
                     current_process->remaining_time = 0;
                     printf("Time %d: Process %d executed for %d units. Remaining: %d\n", getClk(), current_process->id, quantum, current_process->remaining_time);
                     process_finished = false; // reset the flag for the next process
-                    print_process_stats(current_process);
+                    print_process_stats(current_process, finish_recorded_time);
                     free(current_process);        
                     current_process = NULL;
                     cpu_ready_time = getClk() + 1; // Add context switch overhead
@@ -322,7 +428,7 @@ int main(int argc, char * argv[])
 
                     kill(current_process->system_pid, SIGKILL);
                     printf("Time %d: Process %d finished via quantum expiry.\n", getClk(), current_process->id);
-                    print_process_stats(current_process);
+                    print_process_stats(current_process, finish_recorded_time);
                     free(current_process);
                     current_process = NULL;
                     cpu_ready_time = getClk() + 1;
@@ -399,10 +505,11 @@ int main(int argc, char * argv[])
             if (current_process == NULL && isqueueEmpty()) {
                  if (turnoff_timer == -1) {
                     turnoff_timer = getClk(); // start the turnoff timer
-                        } else if (getClk() - turnoff_timer >= 10) { // 10 seconds of doing nothing
-                        printf("Standard Deviation of WTA: %.2f\n", get_std_wta());
-                        printf("10 seconds passed with no work. Terminating.\n");
-
+                        } else if (getClk() - turnoff_timer >= 10) 
+                        { // 10 seconds of doing nothing
+                        // printf("Standard Deviation of WTA: %.2f\n", get_std_wta());
+                        // printf("10 seconds passed with no work. Terminating.\n");
+                            finalize_report(); // Report and exit
                         destroyClk(true);
                         exit(0);
                     }
@@ -410,8 +517,24 @@ int main(int argc, char * argv[])
                     else {
                     turnoff_timer = -1; // reset timer if there's work to do
             }
+            // // Handle termination after 10 seconds of idleness
+            //     if (current_process == NULL && isqueueEmpty()) 
+            //     {
+            //         if (turnoff_timer == -1) 
+            //             turnoff_timer = getClk(); // Start idle timer
+            //     }
+            //     else if (getClk() - turnoff_timer >= 10)  
+            //     { // If idle for 10 seconds, finalize report and exit
+            //             finalize_report(); // Report and exit
+            //     } 
+            //     else 
+            //     {
+            //         turnoff_timer = -1; // Reset timer if there's work to do
+            //     }
 
-   }   
-    destroyClk(true);
-    return 0;
+                        
+    } // <================== END OF WHILE(1) LOOP ==================>
+                        destroyClk(true);
+            
+               return 0;
 }

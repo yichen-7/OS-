@@ -73,7 +73,7 @@ if (file == NULL) {
         execl("./clk.out", "./clk.out", NULL);
     }
 
-     sleep(2);
+     //sleep(2);
     int schedulerpid = fork();
     if (schedulerpid == 0) {
         execl("./scheduler.out", "./scheduler.out", algo_str, quantum_str, NULL);

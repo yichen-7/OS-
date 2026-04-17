@@ -114,7 +114,7 @@ int get_current_wait(struct PCB* p) {
 
 
 void print_process_stats(struct PCB* p, int finish_time) {
-    int TAT = getClk() - p->arrival_time;
+    int TAT = finish_time - p->arrival_time;
     int WT = TAT - p->runtime;
     float current_wta = (float)TAT / p->runtime; 
 
@@ -128,7 +128,7 @@ void print_process_stats(struct PCB* p, int finish_time) {
 
     // Log the 'finished' state
     fprintf(log_file, "At time %d process %d finished arr %d total %d remain 0 wait %d TA %d WTA %.2f\n", 
-            getClk(), p->id, p->arrival_time, p->runtime, WT, TAT, current_wta);
+            finish_time, p->id, p->arrival_time, p->runtime, WT, TAT, current_wta);
 }
 
 
@@ -290,13 +290,17 @@ int main(int argc, char * argv[])
                     if(newpcb.priority < current_process->priority && current_process->remaining_time > 0)
                     {
                         //preempt the current process
-                        kill(current_process->system_pid, SIGSTOP);
+                        
                         int time_spent = getClk() - current_process->start_time;
                         if (time_spent > 0)
                         {
                         current_process->remaining_time -= time_spent; 
                         current_process->time_executed += time_spent; 
                         }
+
+                        usleep(250000);
+
+                        kill(current_process->system_pid, SIGSTOP);
                         current_process->state = STATE_STOPPED;
                         log_process_state("stopped", current_process);
                         enqueue(*current_process);

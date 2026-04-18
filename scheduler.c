@@ -103,6 +103,7 @@ FILE *perf_file;
 int total_waiting_time = 0;
 int total_execution_time = 0;
 int last_finish_time = 0;
+int first_start_time = 0;
 float total_wta = 0;
 float total_wta_sq = 0;
 int total_processes_count = 0;
@@ -149,8 +150,8 @@ void finalize_report() {
     if (total_processes_count > 0 && last_finish_time > 0) {
         float avg_wta = total_wta / total_processes_count;
         float avg_waiting = (float)total_waiting_time / total_processes_count;
-        float utilization = ((float)total_execution_time / last_finish_time) * 100.0;
-
+        //float utilization = ((float)total_execution_time / last_finish_time) * 100.0;
+        float utilization = ((float)total_execution_time / (last_finish_time - first_start_time)) * 100.0;
         
         fprintf(perf_file, "CPU utilization = %.2f%%\n", utilization);
         fprintf(perf_file, "Avg WTA = %.2f\n", avg_wta);
@@ -205,8 +206,6 @@ int main(int argc, char * argv[])
     int cpu_ready_time = 0; //For adding the 1 second overhead of context switching
 
     int turnoff_timer = -1; // To track when to destroy the clock and exit the scheduler (RR)
-
-
     int Algorithm = 1;
     int quantum = 0;
 
@@ -382,6 +381,7 @@ int main(int argc, char * argv[])
                             current_process->system_pid = pid;
                             current_process->state = STATE_STARTED;
                             current_process->start_time = getClk();
+                            if (first_start_time == 0) first_start_time = getClk();
                             // printf("Process %d started at time %d\n", current_process->id, getClk());
                             log_process_state("started", current_process);
                         }
@@ -412,66 +412,56 @@ int main(int argc, char * argv[])
                 if (  current_process != NULL && process_finished) { 
 
                     current_process->remaining_time = 0;
+                    current_process->time_executed += time_spent;
                     printf("Time %d: Process %d executed for %d units. Remaining: %d\n", getClk(), current_process->id, quantum, current_process->remaining_time);
                     process_finished = false; // reset the flag for the next process
                     print_process_stats(current_process, finish_recorded_time);
                     free(current_process);        
                     current_process = NULL;
                     cpu_ready_time = getClk() + 1; // Add context switch overhead
+                    
 
                 }
                
                
-               else if ((time_spent >= quantum ) && !process_finished && current_process != NULL) {
+              else if ((time_spent >= quantum ) && !process_finished && current_process != NULL && current_process->remaining_time > 0) {
 
-                    
                     if (current_process->remaining_time > quantum) {
                     current_process->remaining_time -= quantum;
-                    } 
-
-                    else {
-                    current_process->remaining_time = 0;
-                    
-                    }
-                    
-                    if (current_process->remaining_time <= 0) {
-
-                    kill(current_process->system_pid, SIGKILL);
-                    printf("Time %d: Process %d finished via quantum expiry.\n", getClk(), current_process->id);
-                    print_process_stats(current_process, finish_recorded_time);
-                    free(current_process);
-                    current_process = NULL;
-                    cpu_ready_time = getClk() + 1;
-
-                    }
-
-                    else{
+                    current_process->time_executed += quantum; // Updated time executed with the quantum, not the actual time spent, to reflect the intended execution slice
                     kill(current_process->system_pid, SIGSTOP);
-                    //print_process_stats(current_process);
+                    log_process_state("stopped", current_process);
+                    
+                    current_process->state = STATE_STOPPED;
                     enqueue_rr(*current_process);
                      free(current_process);
                     current_process = NULL;
                     cpu_ready_time = getClk() + 1;
-                    }
-
-                    // printf("Time %d: Process %d paused. Remaining: %d\n", getClk(), current_process->id, current_process->remaining_time);
-                    // free(current_process);
-                    // current_process = NULL;
-                    // cpu_ready_time = getClk() + 1;
                     
-                    //  if (current_process->remaining_time <= 0) { 
-                    //    current_process->remaining_time = 0; // Ensure remaining time doesn't go negative
-
-                    // printf("Process finished at time %d\n", getClk());
-                    // int TAT = getClk() - current_process->arrival_time;
-                    // int WT = TAT - current_process->runtime;
-                    // float WTAT = (float)TAT / current_process->runtime;
-                    // printf("Waiting Time (WT) for process %d: %d\n", current_process->id, WT);
-                    // printf("Turnaround Time (TAT) for process %d: %d\n", current_process->id, TAT);
-                    // printf("Weighted Turnaround Time (WTAT) for process %d: %.2f\n", current_process->id, WTAT);        
-
                 }
 
+                else {
+
+                    current_process->remaining_time = 0;
+                    current_process->start_time = getClk();
+                    // if (first_start_time == 0) first_start_time = getClk();
+
+
+                    // kill(current_process->system_pid, SIGCONT);
+                    // current_process->state = STATE_RESUMED;
+                    // current_process->start_time = getClk();
+                    // log_process_state("resumed", current_process);
+                // current_process->time_executed += current_process->remaining_time;
+                // current_process->remaining_time = 0;
+                // kill(current_process->system_pid, SIGKILL);
+                // printf("[Clock: %d] Process %d finished via quantum expiry.\n", getClk(), current_process->id);
+                // print_process_stats(current_process, getClk());
+                // free(current_process);
+                // current_process = NULL;
+                // cpu_ready_time = getClk() + 1;
+    }
+
+            }
                
 
                 if (current_process == NULL && !isqueueEmpty() && getClk() >= cpu_ready_time) { // The cooldown period must pass for the code to continue (this is the 1 second penalty for context switching)
@@ -493,6 +483,8 @@ int main(int argc, char * argv[])
                             current_process->system_pid = pid;
                             current_process->state = STATE_STARTED;
                             current_process->start_time = getClk();
+                            if (first_start_time == 0) first_start_time = getClk();
+                            log_process_state("started", current_process);
                             printf("Process %d started at time %d\n", current_process->id, getClk());
                         }
                     }
@@ -501,6 +493,7 @@ int main(int argc, char * argv[])
                         kill(current_process->system_pid, SIGCONT);
                         current_process->state = STATE_RESUMED;
                         current_process->start_time = getClk();
+                        log_process_state("resumed", current_process);
                         printf("Time %d: Process %d resumed. Remaining: %d\n", getClk(), current_process->id, current_process->remaining_time);
                     }
                 }
@@ -512,6 +505,8 @@ int main(int argc, char * argv[])
 
 
             }
+
+
             if (current_process == NULL && isqueueEmpty()) {
                  if (turnoff_timer == -1) {
                     turnoff_timer = getClk(); // start the turnoff timer
@@ -544,7 +539,7 @@ int main(int argc, char * argv[])
 
                         
     } // <================== END OF WHILE(1) LOOP ==================>
-                        destroyClk(true);
+            destroyClk(true);
             
                return 0;
 }

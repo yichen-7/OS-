@@ -101,10 +101,16 @@ if (file == NULL) {
     int schedulingAlgorithm;
     scanf("%d",&schedulingAlgorithm);
     int quantumTime = 0;
-    if (schedulingAlgorithm == 2) {
-        printf("Please enter the quantum time for Round Robin: ");
-        scanf("%d", &quantumTime);
+   if ( schedulingAlgorithm == 2) {
+        printf("Enter the time quantum for RR (must be a positive integer): ");
         
+        // Loop continues if scanf fails to read an integer OR if the integer is <= 0
+        while (scanf("%d", &quantumTime) != 1 || quantumTime <= 0) {
+            printf("Invalid input! Please enter a strictly positive integer: ");
+            
+            // Clear the input buffer. This prevents an infinite loop if the user types a letter like 'z'
+            while (getchar() != '\n'); 
+        }
     }
     char algo_str[10];
   char quantum_str[10];

@@ -438,7 +438,7 @@ int main(int argc, char * argv[])
                     current_process->remaining_time = 0;
                     current_process->time_executed += time_spent;
                     //log_process_state("finished", current_process);
-                    printf("Time %d: Process %d executed for %d units. Remaining: %d\n", getClk(), current_process->id, quantum, current_process->remaining_time);
+                    printf("Time %d: Process %d executed for %d units. Remaining: %d\n", getClk(), current_process->id, time_spent, current_process->remaining_time);
                     process_finished = false; // reset the flag for the next process
                     print_process_stats(current_process, finish_recorded_time);
                     free(current_process);        

@@ -279,7 +279,7 @@ int main(int argc, char * argv[])
             printf("[Clock: %d] >> Process %d arrived (Priority: %d, Runtime: %d)\n",getClk(), newpcb.id, newpcb.priority, newpcb.runtime);  
 
             // printf("Scheduler received process with \nID: %d\t arrival time: %d\n runtime: %d\t priority: %d\n", schedulerMsg.p.id, schedulerMsg.p.arrival, schedulerMsg.p.runtime, schedulerMsg.p.priority);
-            log_process_state("arrived", &newpcb);
+            //log_process_state("arrived", &newpcb);
             if (Algorithm==1)
             {
                 enqueue(newpcb);
@@ -413,6 +413,7 @@ int main(int argc, char * argv[])
 
                     current_process->remaining_time = 0;
                     current_process->time_executed += time_spent;
+                    //log_process_state("finished", current_process);
                     printf("Time %d: Process %d executed for %d units. Remaining: %d\n", getClk(), current_process->id, quantum, current_process->remaining_time);
                     process_finished = false; // reset the flag for the next process
                     print_process_stats(current_process, finish_recorded_time);
@@ -429,14 +430,34 @@ int main(int argc, char * argv[])
                     if (current_process->remaining_time > quantum) {
                     current_process->remaining_time -= quantum;
                     current_process->time_executed += quantum; // Updated time executed with the quantum, not the actual time spent, to reflect the intended execution slice
+                    
+                    
+                    bool other_waiting = !isqueueEmpty(); //Checking before enqueueing the stopped process to see if there are other processes waiting. This will determine if we apply the overhead for context switching or not.
+                                                          //For handling the case where a process finishes exactly at the quantum expiry, we check the process_finished flag before applying the overhead.
+                                                          //  If the process finished, we skip the overhead since there will be no next process to switch to. 
+                                                          // If it didn't finish, we apply the overhead as usual.
+
+                    
+
+                    if (other_waiting) {
                     kill(current_process->system_pid, SIGSTOP);
                     log_process_state("stopped", current_process);
-                    
                     current_process->state = STATE_STOPPED;
+                    } 
+
+
+                    
+
                     enqueue_rr(*current_process);
-                     free(current_process);
+                    free(current_process);
                     current_process = NULL;
-                    cpu_ready_time = getClk() + 1;
+
+                    if (other_waiting) {
+                    cpu_ready_time = getClk() + 1; // different process next — apply overhead
+                    }
+                    else {
+                    cpu_ready_time = getClk(); // same process resumes — no overhead
+                    }
                     
                 }
 

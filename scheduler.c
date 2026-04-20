@@ -31,7 +31,12 @@ bool enqueue(struct PCB process)
     newNode->process = process;
     newNode->next = NULL;
 
-    if (isqueueEmpty() || head->process.priority > process.priority)
+    // if (isqueueEmpty() || head->process.priority > process.priority)
+    // Tie-breaker for the head: Insert if new process has higher priority (lower number)
+    // OR if priorities are equal but the new process has a smaller ID.
+    if (isqueueEmpty() || 
+        process.priority < head->process.priority || 
+        (process.priority == head->process.priority && process.id < head->process.id))
     {
         newNode->next = head;
         head = newNode;
@@ -39,7 +44,12 @@ bool enqueue(struct PCB process)
     }
 
     Node* current = head;
-    while (current->next != NULL && current->next->process.priority <= process.priority)
+    // Traverse the queue:
+    // Move forward if the next process has a higher priority (lower value)
+    // OR if the next process has the same priority but its ID is still smaller than the new one
+    while (current->next != NULL && 
+          (current->next->process.priority < process.priority || 
+          (current->next->process.priority == process.priority && current->next->process.id < process.id)))
     {
         current = current->next;
     }
@@ -208,6 +218,7 @@ int main(int argc, char * argv[])
     int turnoff_timer = -1; // To track when to destroy the clock and exit the scheduler (RR)
     int Algorithm = 1;
     int quantum = 0;
+    int shift_needed = 0;
 
  
     
@@ -218,10 +229,17 @@ int main(int argc, char * argv[])
     if (argc > 2) { 
         quantum = atoi(argv[2]); //Assuming 2nd argument is the quantum for RR
     }
+    if (argc > 3) {
+        shift_needed = atoi(argv[3]); //Assuming 3rd argument is the shift flag
+    }
 
     // Open output files in write mode -- this will create the files if they don't exist and overwrite them if they do - 'w' mode is for writing
         log_file = fopen("scheduler.log", "w");
         perf_file = fopen("scheduler.perf", "w");
+
+        // if (shift_needed) {
+        //     fprintf(log_file, "# Note: One of the processes had an arrival time of 0. All arrival times were shifted by +1 to avoid simultaneous arrival with clock start.\n");
+        // }
         
         // Write header for the log file
         if (log_file != NULL) {
@@ -353,7 +371,13 @@ int main(int argc, char * argv[])
                     process_finished = false;
                     free(current_process);
                     current_process = NULL;
-                    cpu_ready_time = getClk() + 1;
+
+                    if (!isqueueEmpty()) {
+                        cpu_ready_time = getClk() + 1; // Only add overhead if there's a process waiting to be switched TO
+                    }
+                    else cpu_ready_time = getClk(); // CPU becomes idle, next arrival starts instantly
+                            
+                    
                 }
 
                 // Added (getClk() >= cpu_ready_time) to respect the context switching overhead
@@ -419,7 +443,10 @@ int main(int argc, char * argv[])
                     print_process_stats(current_process, finish_recorded_time);
                     free(current_process);        
                     current_process = NULL;
-                    cpu_ready_time = getClk() + 1; // Add context switch overhead
+                    if(!isqueueEmpty())
+                    {cpu_ready_time = getClk() + 1;} // Add context switch overhead}
+                    else cpu_ready_time = getClk(); // No overhead if CPU goes idle
+                    
                     
 
                 }
@@ -462,9 +489,17 @@ int main(int argc, char * argv[])
                 }
 
                 else {
-
-                    current_process->remaining_time = 0;
-                    current_process->start_time = getClk();
+                    // If queue is empty, don't stop. Just "renew" the quantum.
+                     // We update time_executed but keep the process running.
+                    
+                    int actual_execution = (current_process->remaining_time > quantum) ? quantum : current_process->remaining_time;
+                        current_process->remaining_time -= actual_execution;
+                        current_process->time_executed += actual_execution;
+                        current_process->start_time = getClk();
+                        // If it still has time, it just keeps going. 
+                        // If it reached 0, the process_finished flag from the signal will handle it.
+                    // current_process->remaining_time = 0;
+                    // current_process->start_time = getClk();
                     // if (first_start_time == 0) first_start_time = getClk();
 
 
@@ -518,11 +553,6 @@ int main(int argc, char * argv[])
                         printf("Time %d: Process %d resumed. Remaining: %d\n", getClk(), current_process->id, current_process->remaining_time);
                     }
                 }
-
-              
-
-
-                
 
 
             }

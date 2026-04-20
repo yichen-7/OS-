@@ -4,6 +4,20 @@ void clearResources(int);
 
 int msgid;
 
+// Comparison function for qsort
+int compareProcesses(const void* a, const void* b) {
+    struct process* p1 = (struct process*)a;
+    struct process* p2 = (struct process*)b;
+
+    // 1. Primary sort by Arrival Time
+    if (p1->arrival != p2->arrival) {
+        return p1->arrival - p2->arrival;
+    }
+    // 2. Secondary sort by ID (Tie-breaker for same arrival)
+    return p1->id - p2->id;
+}
+
+
 int main(int argc, char * argv[])
 {
     signal(SIGINT, clearResources);
@@ -32,7 +46,7 @@ if (file == NULL) {
     int processCount = 0;
 
   while (fgets(line, sizeof(line), file) != NULL) {
-      if (line[0] =='#')  {
+      if (line[0] =='#' || line[0] == '\n' || line[0] == '\r')   {
             continue; 
       }
       else {    
@@ -50,6 +64,32 @@ if (file == NULL) {
       }
     }
     fclose(file);
+    // Sort processes by arrival time (and ID as tie-breaker)
+    qsort(processes, processCount, sizeof(struct process), compareProcesses);
+
+    bool shift_needed = false;
+    for (int i = 0; i < processCount; i++) {
+        if (processes[i].arrival == 0) {
+            shift_needed = true;
+            break;
+        }
+    }
+
+    // If someone arrived at 0, shift EVERYONE'S arrival time by 1
+    if (shift_needed) {
+        for (int i = 0; i < processCount; i++) {
+            processes[i].arrival += 1;
+        }
+        // \033[1;31m is the code for Bold Red
+        // \033[0m resets the color back to normal
+        printf("\033[1;31mNote: A process arrived at time 0. All arrival times have been shifted by +1 to avoid simultaneous arrival with clock start.\033[0m\n");
+    }
+
+    // Convert the boolean flag to a string so we can pass it to the scheduler
+    char shift_str[10];
+    sprintf(shift_str, "%d", shift_needed ? 1 : 0);
+
+
     // 2. Ask the user for the chosen scheduling algorithm and its parameters, if there are any.
     printf("Please choose the scheduling algorithm you want to use:\n");
     printf("1. HPF\n");
@@ -76,7 +116,7 @@ if (file == NULL) {
      //sleep(2);
     int schedulerpid = fork();
     if (schedulerpid == 0) {
-        execl("./scheduler.out", "./scheduler.out", algo_str, quantum_str, NULL);
+        execl("./scheduler.out", "./scheduler.out", algo_str, quantum_str, shift_str, NULL);
     }
 
 

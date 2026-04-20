@@ -51,9 +51,13 @@ if (file == NULL) {
       }
       else {    
         
-
         int id, arrival, runtime, priority;
       sscanf(line, "%d%d%d%d", &id, &arrival, &runtime, &priority);
+
+        if (runtime <= 0) {
+            printf("\033[1;33mWarning: Process %d ignored because runtime is 0.\033[0m\n", id);
+            continue;
+        }
         processes[processCount].id = id;
         processes[processCount].arrival = arrival;
         processes[processCount].runtime = runtime;

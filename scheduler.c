@@ -317,7 +317,8 @@ int main(int argc, char * argv[])
                         }
 
                         //usleep(250000);
-
+                        if(!process_finished)
+                        {
                         kill(current_process->system_pid, SIGSTOP);
                         current_process->state = STATE_STOPPED;
                         log_process_state("stopped", current_process);
@@ -329,6 +330,7 @@ int main(int argc, char * argv[])
                         free(current_process);
                         current_process = NULL;
                         cpu_ready_time = getClk() + 1; 
+                        }
                         
                     }
                 }

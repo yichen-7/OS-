@@ -304,7 +304,8 @@ int main(int argc, char * argv[])
 
                     if(current_process != NULL)
                 {
-                    if(newpcb.priority < current_process->priority && current_process->remaining_time > 0)
+                    if(newpcb.priority < current_process->priority && current_process->remaining_time > 0 && !process_finished) //&& !process_finished added this 47min before the submission by ghrbr to handle the case where a process finishes at the same time a new one arrives with higher priority.
+                     //In that case, we don't want to preempt a process that just finished.
                     {
                         //preempt the current process
                         
@@ -315,7 +316,7 @@ int main(int argc, char * argv[])
                         current_process->time_executed += time_spent; 
                         }
 
-                        usleep(250000);
+                        //usleep(250000);
 
                         kill(current_process->system_pid, SIGSTOP);
                         current_process->state = STATE_STOPPED;
